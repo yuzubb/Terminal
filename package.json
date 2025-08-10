@@ -1,0 +1,16 @@
+{
+  "name": "my-terminal-app",
+  "version": "1.0.0",
+  "description": "",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@supabase/supabase-js": "^2.44.3",
+    "express": "^4.19.2"
+  }
+}
