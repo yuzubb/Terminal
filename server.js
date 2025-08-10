@@ -5,20 +5,27 @@ const path = require('path');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Renderの環境変数からSupabaseの情報を取得
+// 環境変数からSupabaseの情報を取得
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 
-// Supabaseクライアントの初期化
+// Supabaseクライアントを初期化
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// JSON形式のリクエストボディをパースするためのミドルウェア
+// JSON形式のリクエストボディをパース
 app.use(express.json());
 
-// 静的ファイルの提供
-app.use(express.static(path.join(__dirname, 'public')));
+// ルートURLにアクセスされたときにindex.htmlを返す
+// __dirnameはserver.jsが置かれているディレクトリを指します
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
 
-// メッセージ取得用のAPIエンドポイント
+// 静的ファイルを配信
+// index.htmlがルートにあるので、静的ファイル（画像など）も同じフォルダに置くことを想定
+app.use(express.static(__dirname));
+
+// メッセージ取得用API
 app.get('/api/messages', async (req, res) => {
     try {
         const { data, error } = await supabaseClient
@@ -35,7 +42,7 @@ app.get('/api/messages', async (req, res) => {
     }
 });
 
-// 新しいメッセージ投稿用のAPIエンドポイント
+// 新規メッセージ投稿用API
 app.post('/api/messages', async (req, res) => {
     const { sender_id, content } = req.body;
     if (!sender_id || !content) {
@@ -56,7 +63,7 @@ app.post('/api/messages', async (req, res) => {
     }
 });
 
-// `/clear`コマンド用のAPIエンドポイント (パスワードによる認証付き)
+// メッセージ全削除用API
 app.delete('/api/messages', async (req, res) => {
     const { password } = req.body;
 
@@ -85,7 +92,7 @@ app.delete('/api/messages', async (req, res) => {
     }
 });
 
-// サーバーの起動
+// サーバー起動
 app.listen(port, () => {
     console.log(`Server is running on port ${port}`);
 });
