@@ -2,8 +2,8 @@ services:
   - type: web
     name: my-web-service
     plan: starter
-    # Dockerfileがルートディレクトリにあれば、buildCommandは不要
-    # 必要に応じて、ビルド前に実行するコマンドを記述
-    # buildCommand: 'npm install' 
-    # startCommandは、Dockerコンテナ内でアプリケーションを起動するコマンド
+    # Dockerfileがルートディレクトリにあれば、このbuildCommandは不要です。
+    # もしビルド前に何か実行したいことがあれば、ここに記述します。
+    # buildCommand: 'npm install'
+    # startCommandは、コンテナ内でアプリケーションを起動するコマンドです。
     startCommand: 'npm start'
