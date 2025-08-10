@@ -107,96 +107,54 @@
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <script>
         const terminal = document.getElementById('terminal');
         const commandLine = document.getElementById('command-line');
-        const terminalView = document.getElementById('terminal-view');
-
-        // --- ここをあなたのSupabaseプロジェクトの情報に置き換えてください ---
-        const SUPABASE_URL = 'https://zlbfsyixwncpictplcvk.supabase.co'; 
-        const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpsYmZzeWl4d25jcGljdHBsY3ZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTQ4MDkwOTcsImV4cCI6MjA3MDM4NTA5N30.AGoC-NxJTJPKnyU1pb2ICONGYd4b5EzdW6nkcOyXdao';
-        // -----------------------------------------------------------
 
         let myId = '';
         let myName = '';
-        let supabaseClient = null;
-        let isConnected = false;
+        let isConnected = true;
         let updateInterval = null;
         let lastMessageId = 0;
-        let currentInput = '';
-        const allowedUploaderId = 'DE39D5'; // ファイルアップロードを許可するID
+        const allowedUploaderId = 'DE39D5';
 
-        async function initializeSupabase() {
-            try {
-                const { createClient } = supabase;
-                supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                print("Supabaseクライアントを初期化しました。", 'system');
-                await connectToBoard();
-            } catch (error) {
-                print(`Supabaseへの接続に失敗しました: ${error.message}`, 'system');
+        // メッセージをサーバーから取得
+        async function fetchMessages(lastId) {
+            const url = lastId ? `/api/messages?lastId=${lastId}` : `/api/messages`;
+            const response = await fetch(url);
+            if (!response.ok) {
+                throw new Error('Failed to fetch messages');
             }
-        }
-        
-        async function connectToBoard() {
-            if (!supabaseClient) {
-                print("Supabaseクライアントが初期化されていません。", 'system');
-                return;
-            }
-
-            try {
-                if (isConnected) {
-                    print("すでに掲示板に接続しています。", 'system');
-                    return;
-                }
-                
-                print("掲示板に接続中...", 'system');
-
-                await fetchAllMessages();
-
-                isConnected = true;
-                setCookie('isConnected', 'true', 365);
-                print("掲示板に接続しました。メッセージを投稿できます。", 'system');
-                startUpdating();
-            } catch (error) {
-                print(`掲示板への接続に失敗しました: ${error.message}`, 'system');
-            }
+            return await response.json();
         }
 
         async function fetchAllMessages() {
-            const { data, error } = await supabaseClient.from('messages').select('*').order('created_at', { ascending: true });
-            
-            if (error) {
-                throw error;
-            }
-
-            if (data.length > 0) {
-                data.forEach(msg => {
-                    displayMessage(msg.sender_id, msg.content, msg.created_at);
-                });
-                lastMessageId = data[data.length - 1].id;
+            try {
+                const data = await fetchMessages();
+                if (data.length > 0) {
+                    terminal.innerHTML = ""; // 画面をクリア
+                    data.forEach(msg => {
+                        displayMessage(msg.sender_id, msg.content, msg.created_at);
+                    });
+                    lastMessageId = data[data.length - 1].id;
+                }
+            } catch (error) {
+                print(`メッセージの取得に失敗しました: ${error.message}`, 'system');
             }
         }
         
         async function fetchNewMessages() {
             if (!isConnected) return;
-
-            const { data, error } = await supabaseClient
-                .from('messages')
-                .select('*')
-                .gt('id', lastMessageId)
-                .order('created_at', { ascending: true });
-            
-            if (error) {
+            try {
+                const data = await fetchMessages(lastMessageId);
+                if (data.length > 0) {
+                    data.forEach(msg => {
+                        displayMessage(msg.sender_id, msg.content, msg.created_at);
+                    });
+                    lastMessageId = data[data.length - 1].id;
+                }
+            } catch (error) {
                 console.error('メッセージの取得に失敗:', error);
-                return;
-            }
-
-            if (data.length > 0) {
-                data.forEach(msg => {
-                    displayMessage(msg.sender_id, msg.content, msg.created_at);
-                });
-                lastMessageId = data[data.length - 1].id;
             }
         }
 
@@ -213,7 +171,7 @@
                 updateInterval = null;
             }
         }
-
+        
         function formatTimestamp(timestamp) {
             const date = new Date(timestamp);
             const hours = String(date.getHours()).padStart(2, '0');
@@ -316,11 +274,20 @@
 
             if (isConnected && myId && fullCommand && !mainCommand.startsWith('/') && mainCommand !== 'help') {
                 const sender = myName || myId;
-                const { error } = await supabaseClient
-                    .from('messages')
-                    .insert({ sender_id: sender, content: fullCommand });
-
-                if (error) {
+                try {
+                    const response = await fetch('/api/messages', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({ sender_id: sender, content: fullCommand })
+                    });
+                    if (!response.ok) {
+                        throw new Error('Failed to post message');
+                    }
+                    // 投稿成功後、手動でメッセージを更新
+                    fetchNewMessages();
+                } catch (error) {
                     print(`投稿に失敗しました: ${error.message}`, 'system');
                 }
                 return;
@@ -330,10 +297,10 @@
                 case 'help':
                     print("利用可能なコマンド:");
                     print("&nbsp;&nbsp;<b>/disconnect</b> - 掲示板から切断し、更新を停止します。");
-                    print("&nbsp;&nbsp;<b>/id</b>         - あなたのIDと名前を表示します。");
+                    print("&nbsp;&nbsp;<b>/id</b>         - あなたのIDと名前を表示します。");
                     print("&nbsp;&nbsp;<b>/name</b> [新しい名前] - 自分の名前を変更します。");
-                    print("&nbsp;&nbsp;<b>/clear</b>      - データベースのメッセージをすべて削除します。 (パスワードが必要です)");
-                    print("&nbsp;&nbsp;<b>/upload</b>     - ファイルをアップロードします。 (ID:DE39D5のみ)");
+                    print("&nbsp;&nbsp;<b>/clear</b>      - データベースのメッセージをすべて削除します。 (パスワードが必要です)");
+                    print("&nbsp;&nbsp;<b>/upload</b>     - ファイルをアップロードします。 (ID:DE39D5のみ)");
                     print("&nbsp;&nbsp;<b>[メッセージ]</b> - 全員にメッセージを投稿します。");
                     break;
                 
@@ -374,40 +341,30 @@
                     const password = prompt("パスワードを入力してください:");
                     if (password) {
                         try {
-                            const { data, error } = await supabaseClient
-                                .from('passwords')
-                                .select('value')
-                                .eq('id', 'clear_password')
-                                .single();
+                            const response = await fetch('/api/messages', {
+                                method: 'DELETE',
+                                headers: {
+                                    'Content-Type': 'application/json'
+                                },
+                                body: JSON.stringify({ password })
+                            });
 
-                            if (error) {
-                                throw error;
+                            const result = await response.json();
+                            if (!response.ok) {
+                                throw new Error(result.error);
                             }
-
-                            if (data.value === password) {
-                                const { error: deleteError } = await supabaseClient
-                                    .from('messages')
-                                    .delete()
-                                    .gt('id', 0);
-                                
-                                if (deleteError) {
-                                    throw deleteError;
-                                }
-                                
-                                terminal.innerHTML = "<div>ようこそ！</div><div>掲示板に接続し、10秒ごとに自動更新を開始しました。</div><div>'help'でコマンドを確認できます。</div><br>";
-                                print("データベースのメッセージをすべて削除しました。", 'system');
-                                
-                                if (isConnected) {
-                                    connectToBoard();
-                                }
-                            } else {
-                                print("パスワードが違います。", 'system');
+                            
+                            terminal.innerHTML = "<div>ようこそ！</div><div>掲示板に接続し、10秒ごとに自動更新を開始しました。</div><div>'help'でコマンドを確認できます。</div><br>";
+                            print("データベースのメッセージをすべて削除しました。", 'system');
+                            
+                            if (isConnected) {
+                                fetchAllMessages();
                             }
                         } catch (error) {
                             print(`エラーが発生しました: ${error.message}`, 'system');
                         }
                     } else {
-                         print("パスワードが入力されませんでした。", 'system');
+                        print("パスワードが入力されませんでした。", 'system');
                     }
                     break;
 
@@ -416,7 +373,6 @@
                         print("このコマンドを実行する権限がありません。", 'system');
                         return;
                     }
-                    // ここにファイルアップロードのロジックを追加
                     print("ファイルアップロード機能は現在開発中です。", 'system');
                     break;
 
@@ -433,7 +389,8 @@
         });
 
         loadUserInfo();
-        initializeSupabase();
+        fetchAllMessages();
+        startUpdating();
     </script>
 </body>
 </html>
