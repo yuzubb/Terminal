@@ -2,28 +2,102 @@
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
+const multer = require('multer');
 const app = express();
 const port = process.env.PORT || 3000;
 
 // 環境変数からSupabaseの情報を取得
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-// Supabaseクライアントを初期化
-const supabaseClient = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// Supabaseクライアントを初期化（サービスロールキーを使用）
+const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
 // JSON形式のリクエストボディをパース
 app.use(express.json());
 
-// ルートURLにアクセスされたときにindex.htmlを返す
-// __dirnameはserver.jsが置かれているディレクトリを指します
-app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+// ファイルアップロードのための一時ストレージ
+const upload = multer({ storage: multer.memoryStorage() });
 
 // 静的ファイルを配信
-// index.htmlがルートにあるので、静的ファイル（画像など）も同じフォルダに置くことを想定
-app.use(express.static(__dirname));
+app.use(express.static(path.join(__dirname, 'public')));
+
+// ------------------------------------
+// 新しいAPIエンドポイント
+// ------------------------------------
+
+// ユーザー登録API
+app.post('/api/auth/signup', async (req, res) => {
+    const { email, password } = req.body;
+    try {
+        const { data, error } = await supabaseClient.auth.signUp({ email, password });
+        if (error) throw error;
+        res.status(201).json({ message: 'User registered successfully. Check your email for a verification link.' });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ユーザーログインAPI
+app.post('/api/auth/login', async (req, res) => {
+    const { email, password } = req.body;
+    try {
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        res.json({ message: 'Login successful', user: data.user, session: data.session });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// ファイルアップロードAPI
+app.post('/api/upload', upload.single('image'), async (req, res) => {
+    const { authorization } = req.headers;
+    const { user } = await supabaseClient.auth.getUser(authorization.split(' ')[1]);
+
+    if (!user) {
+        return res.status(401).json({ error: 'Unauthorized' });
+    }
+
+    if (!req.file) {
+        return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const fileExt = req.file.originalname.split('.').pop();
+    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+
+    try {
+        const { data, error } = await supabaseClient.storage.from('images').upload(fileName, req.file.buffer, {
+            contentType: req.file.mimetype
+        });
+
+        if (error) throw error;
+
+        const publicUrl = supabaseClient.storage.from('images').getPublicUrl(fileName).data.publicUrl;
+
+        // 投稿としてデータベースに保存
+        const { data: postData, error: postError } = await supabaseClient
+            .from('messages')
+            .insert({ sender_id: user.email, content: `![](${publicUrl})` }); // Markdown形式で画像URLを投稿
+
+        if (postError) throw postError;
+
+        res.json({ message: 'File uploaded and posted successfully', url: publicUrl });
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+
+// ------------------------------------
+// 既存のAPIエンドポイント
+// ------------------------------------
+
+// ルートURLにアクセスされたときにindex.htmlを返す
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
 
 // メッセージ取得用API
 app.get('/api/messages', async (req, res) => {
