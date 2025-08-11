@@ -50,13 +50,10 @@ app.get('/login.html', (req, res) => {
 app.post('/api/auth/signup', async (req, res) => {
     const { username, password } = req.body;
     try {
-        // Supabaseはサインアップにメールアドレスが必須
-        // ダミーのメールアドレスとユーザー名を連携
         const dummyEmail = `${username}@example.com`;
         const { data, error } = await supabaseClient.auth.signUp({ email: dummyEmail, password: password });
         if (error) throw error;
         
-        // プロフィールテーブルにユーザー名を保存
         await supabaseClient
             .from('profiles')
             .insert({ id: data.user.id, username: username });
@@ -69,7 +66,7 @@ app.post('/api/auth/signup', async (req, res) => {
 
 app.post('/api/auth/login', async (req, res) => {
     const { username, password } = req.body;
-    const dummyEmail = `${username}@example.com`; // 登録時に使用したダミーメール
+    const dummyEmail = `${username}@example.com`;
     try {
         const { data, error } = await supabaseClient.auth.signInWithPassword({ email: dummyEmail, password: password });
         if (error) throw error;
@@ -101,7 +98,6 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
         if (uploadError) throw uploadError;
         const publicUrl = supabaseClient.storage.from('images').getPublicUrl(fileName).data.publicUrl;
         
-        // ユーザー名を取得
         const { data: profileData, error: profileError } = await supabaseClient
             .from('profiles')
             .select('username')
@@ -122,7 +118,6 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
 });
 
 // --- 掲示板メッセージAPI ---
-// メッセージ取得用API
 app.get('/api/messages', async (req, res) => {
     try {
         const { data, error } = await supabaseClient
@@ -138,7 +133,6 @@ app.get('/api/messages', async (req, res) => {
     }
 });
 
-// 新規メッセージ投稿用API
 app.post('/api/messages', async (req, res) => {
     const { sender_id, content } = req.body;
     if (!sender_id || !content) {
@@ -157,7 +151,6 @@ app.post('/api/messages', async (req, res) => {
     }
 });
 
-// メッセージ全削除用API
 app.delete('/api/messages', async (req, res) => {
     const { password } = req.body;
     try {
