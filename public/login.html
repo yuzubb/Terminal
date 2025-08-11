@@ -16,7 +16,6 @@
             margin: 0;
             flex-direction: column;
         }
-
         .container {
             background-color: #2a2a2a;
             padding: 40px;
@@ -24,12 +23,8 @@
             box-shadow: 0 0 15px rgba(0, 0, 0, 0.5);
             text-align: center;
         }
-
-        h2 {
-            color: #8f8;
-        }
-
-        input[type="email"],
+        h2 { color: #8f8; }
+        input[type="text"],
         input[type="password"] {
             width: 100%;
             padding: 10px;
@@ -40,7 +35,6 @@
             border-radius: 5px;
             box-sizing: border-box;
         }
-
         button {
             background-color: #6495ed;
             color: white;
@@ -52,15 +46,8 @@
             width: 100%;
             font-weight: bold;
         }
-
-        button:hover {
-            background-color: #4a75c1;
-        }
-
-        #message {
-            margin-top: 20px;
-            color: #f0f0f0;
-        }
+        button:hover { background-color: #4a75c1; }
+        #message { margin-top: 20px; color: #f0f0f0; }
     </style>
 </head>
 <body>
@@ -68,7 +55,7 @@
     <div class="container">
         <h2>ログイン / サインアップ</h2>
         <form id="auth-form">
-            <input type="email" id="email" placeholder="メールアドレス" required>
+            <input type="text" id="username" placeholder="ユーザー名" required>
             <input type="password" id="password" placeholder="パスワード" required>
             <button type="button" id="login-btn">ログイン</button>
             <button type="button" id="signup-btn">サインアップ</button>
@@ -77,7 +64,7 @@
     </div>
 
     <script>
-        const emailInput = document.getElementById('email');
+        const usernameInput = document.getElementById('username');
         const passwordInput = document.getElementById('password');
         const loginBtn = document.getElementById('login-btn');
         const signupBtn = document.getElementById('signup-btn');
@@ -92,24 +79,25 @@
             }
             document.cookie = name + "=" + (value || "") + expires + "; path=/";
         }
-
+        
         async function handleLogin() {
-            const email = emailInput.value;
+            const username = usernameInput.value;
             const password = passwordInput.value;
             
             try {
                 const response = await fetch('/api/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
+                    body: JSON.stringify({ username, password })
                 });
                 const result = await response.json();
                 if (response.ok) {
                     messageDisplay.style.color = '#8f8';
                     messageDisplay.innerText = "ログインに成功しました。メインページにリダイレクトします。";
+                    // ログイン情報をクッキーに保存
                     setCookie('sessionToken', result.session.access_token, 1);
-                    setCookie('userEmail', result.user.email, 1);
-                    window.location.href = '/'; // ログイン後、メインページへ移動
+                    setCookie('userName', username, 1);
+                    window.location.href = '/'; 
                 } else {
                     messageDisplay.style.color = '#ff6347';
                     messageDisplay.innerText = `ログイン失敗: ${result.error}`;
@@ -121,19 +109,19 @@
         }
 
         async function handleSignup() {
-            const email = emailInput.value;
+            const username = usernameInput.value;
             const password = passwordInput.value;
 
             try {
                 const response = await fetch('/api/auth/signup', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ email, password })
+                    body: JSON.stringify({ username, password })
                 });
                 const result = await response.json();
                 if (response.ok) {
                     messageDisplay.style.color = '#8f8';
-                    messageDisplay.innerText = "サインアップが完了しました。メールアドレスを確認してください。";
+                    messageDisplay.innerText = "サインアップが完了しました。";
                 } else {
                     messageDisplay.style.color = '#ff6347';
                     messageDisplay.innerText = `サインアップ失敗: ${result.error}`;
