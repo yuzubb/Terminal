@@ -94,7 +94,6 @@
                 if (response.ok) {
                     messageDisplay.style.color = '#8f8';
                     messageDisplay.innerText = "ログインに成功しました。メインページにリダイレクトします。";
-                    // ログイン情報をクッキーに保存
                     setCookie('sessionToken', result.session.access_token, 1);
                     setCookie('userName', username, 1);
                     window.location.href = '/'; 
