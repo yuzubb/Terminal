@@ -350,11 +350,13 @@
         function init() {
             accessToken = getCookie('sessionToken');
             myUserName = getCookie('userName');
-            if (accessToken && myUserName) {
-                print(`ログイン済みです: ${myUserName}`, 'system');
-            } else {
-                print("ログインしていません。'/login'または'/signup'で認証してください。", 'system');
+            
+            if (!accessToken || !myUserName) {
+                window.location.href = '/login.html';
+                return;
             }
+
+            print(`ログイン済みです: ${myUserName}`, 'system');
             fetchAllMessages();
             startUpdating();
         }
