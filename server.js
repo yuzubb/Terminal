@@ -1,9 +1,8 @@
-// server.js (修正版)
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
 const multer = require('multer');
-const cookieParser = require('cookie-parser'); // Cookieをパースするために必要
+const cookieParser = require('cookie-parser');
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -47,89 +46,89 @@ app.get('/login.html', (req, res) => {
     res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
-// ------------------------------------
-// ユーザー認証とファイルアップロードのAPI (変更なし)
-// ------------------------------------
-
-// ユーザー登録API
+// --- ユーザー認証API ---
 app.post('/api/auth/signup', async (req, res) => {
-    // ... 既存のコード ...
-    const { email, password } = req.body;
+    const { username, password } = req.body;
     try {
-        const { error } = await supabaseClient.auth.signUp({ email, password });
+        // Supabaseはサインアップにメールアドレスが必須
+        // ダミーのメールアドレスとユーザー名を連携
+        const dummyEmail = `${username}@example.com`;
+        const { data, error } = await supabaseClient.auth.signUp({ email: dummyEmail, password: password });
         if (error) throw error;
-        res.status(201).json({ message: 'User registered successfully. Check your email for a verification link.' });
+        
+        // プロフィールテーブルにユーザー名を保存
+        await supabaseClient
+            .from('profiles')
+            .insert({ id: data.user.id, username: username });
+            
+        res.status(201).json({ message: 'User registered successfully.' });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
 });
 
-// ユーザーログインAPI
 app.post('/api/auth/login', async (req, res) => {
-    // ... 既存のコード ...
-    const { email, password } = req.body;
+    const { username, password } = req.body;
+    const dummyEmail = `${username}@example.com`; // 登録時に使用したダミーメール
     try {
-        const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
+        const { data, error } = await supabaseClient.auth.signInWithPassword({ email: dummyEmail, password: password });
         if (error) throw error;
+        
         res.json({ message: 'Login successful', user: data.user, session: data.session });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
 });
 
-// ファイルアップロードAPI
+// --- 写真アップロードAPI ---
 app.post('/api/upload', upload.single('image'), async (req, res) => {
-    // ... 既存のコード ...
     const { authorization } = req.headers;
     const token = authorization.split(' ')[1];
-
     const { data: userAuthData, error: userAuthError } = await supabaseClient.auth.getUser(token);
     if (userAuthError || !userAuthData.user) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
     const user = userAuthData.user;
-
     if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
     }
-
     const fileExt = req.file.originalname.split('.').pop();
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
-
     try {
         const { data: uploadData, error: uploadError } = await supabaseClient.storage.from('images').upload(fileName, req.file.buffer, {
             contentType: req.file.mimetype
         });
-
         if (uploadError) throw uploadError;
-
         const publicUrl = supabaseClient.storage.from('images').getPublicUrl(fileName).data.publicUrl;
-
+        
+        // ユーザー名を取得
+        const { data: profileData, error: profileError } = await supabaseClient
+            .from('profiles')
+            .select('username')
+            .eq('id', user.id)
+            .single();
+        if (profileError || !profileData) {
+            throw new Error('User profile not found');
+        }
+        
         const { data: postData, error: postError } = await supabaseClient
             .from('messages')
-            .insert({ sender_id: user.email, content: `![](${publicUrl})` });
-
+            .insert({ sender_id: profileData.username, content: `![](${publicUrl})` });
         if (postError) throw postError;
-
         res.json({ message: 'File uploaded and posted successfully', url: publicUrl });
     } catch (e) {
         res.status(500).json({ error: e.message });
     }
 });
 
-// ------------------------------------
-// 既存のAPIエンドポイント (変更なし)
-// ------------------------------------
-
+// --- 掲示板メッセージAPI ---
 // メッセージ取得用API
 app.get('/api/messages', async (req, res) => {
-    // ... 既存のコード ...
     try {
         const { data, error } = await supabaseClient
             .from('messages')
             .select('*')
             .order('created_at', { ascending: true });
-
         if (error) {
             return res.status(500).json({ error: error.message });
         }
@@ -141,17 +140,14 @@ app.get('/api/messages', async (req, res) => {
 
 // 新規メッセージ投稿用API
 app.post('/api/messages', async (req, res) => {
-    // ... 既存のコード ...
     const { sender_id, content } = req.body;
     if (!sender_id || !content) {
         return res.status(400).json({ error: 'sender_id and content are required' });
     }
-
     try {
         const { data, error } = await supabaseClient
             .from('messages')
             .insert({ sender_id, content });
-
         if (error) {
             return res.status(500).json({ error: e.message });
         }
@@ -163,25 +159,20 @@ app.post('/api/messages', async (req, res) => {
 
 // メッセージ全削除用API
 app.delete('/api/messages', async (req, res) => {
-    // ... 既存のコード ...
     const { password } = req.body;
-
     try {
         const { data: passwordData, error: passwordError } = await supabaseClient
             .from('passwords')
             .select('value')
             .eq('id', 'clear_password')
             .single();
-
         if (passwordError || !passwordData || passwordData.value !== password) {
             return res.status(401).json({ error: 'Invalid password' });
         }
-
         const { error: deleteError } = await supabaseClient
             .from('messages')
             .delete()
             .gt('id', 0);
-
         if (deleteError) {
             return res.status(500).json({ error: deleteError.message });
         }
