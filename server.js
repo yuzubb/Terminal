@@ -1,8 +1,9 @@
-// server.js
+// server.js (修正版)
 const express = require('express');
 const { createClient } = require('@supabase/supabase-js');
 const path = require('path');
 const multer = require('multer');
+const cookieParser = require('cookie-parser'); // Cookieをパースするために必要
 const app = express();
 const port = process.env.PORT || 3000;
 
@@ -12,10 +13,17 @@ const SUPABASE_ANON_KEY = process.env.SUPABASE_ANON_KEY;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
 // Supabaseクライアントを初期化（サービスロールキーを使用）
-const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: {
+        autoRefreshToken: false,
+        persistSession: false
+    }
+});
 
 // JSON形式のリクエストボディをパース
 app.use(express.json());
+// Cookieをパース
+app.use(cookieParser());
 
 // ファイルアップロードのための一時ストレージ
 const upload = multer({ storage: multer.memoryStorage() });
@@ -23,15 +31,32 @@ const upload = multer({ storage: multer.memoryStorage() });
 // 静的ファイルを配信
 app.use(express.static(path.join(__dirname, 'public')));
 
+// ルートURLにアクセスされたときにログイン状態をチェックし、リダイレクト
+app.get('/', (req, res) => {
+    const sessionToken = req.cookies.sessionToken;
+    if (sessionToken) {
+        // セッショントークンがあれば、メインページを表示
+        res.sendFile(path.join(__dirname, 'public', 'index.html'));
+    } else {
+        // なければ、ログインページへリダイレクト
+        res.redirect('/login.html');
+    }
+});
+// ログインページへのアクセスはそのまま許可
+app.get('/login.html', (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'login.html'));
+});
+
 // ------------------------------------
-// 新しいAPIエンドポイント
+// ユーザー認証とファイルアップロードのAPI (変更なし)
 // ------------------------------------
 
 // ユーザー登録API
 app.post('/api/auth/signup', async (req, res) => {
+    // ... 既存のコード ...
     const { email, password } = req.body;
     try {
-        const { data, error } = await supabaseClient.auth.signUp({ email, password });
+        const { error } = await supabaseClient.auth.signUp({ email, password });
         if (error) throw error;
         res.status(201).json({ message: 'User registered successfully. Check your email for a verification link.' });
     } catch (e) {
@@ -41,6 +66,7 @@ app.post('/api/auth/signup', async (req, res) => {
 
 // ユーザーログインAPI
 app.post('/api/auth/login', async (req, res) => {
+    // ... 既存のコード ...
     const { email, password } = req.body;
     try {
         const { data, error } = await supabaseClient.auth.signInWithPassword({ email, password });
@@ -53,12 +79,15 @@ app.post('/api/auth/login', async (req, res) => {
 
 // ファイルアップロードAPI
 app.post('/api/upload', upload.single('image'), async (req, res) => {
+    // ... 既存のコード ...
     const { authorization } = req.headers;
-    const { user } = await supabaseClient.auth.getUser(authorization.split(' ')[1]);
+    const token = authorization.split(' ')[1];
 
-    if (!user) {
+    const { data: userAuthData, error: userAuthError } = await supabaseClient.auth.getUser(token);
+    if (userAuthError || !userAuthData.user) {
         return res.status(401).json({ error: 'Unauthorized' });
     }
+    const user = userAuthData.user;
 
     if (!req.file) {
         return res.status(400).json({ error: 'No file uploaded' });
@@ -68,18 +97,17 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
 
     try {
-        const { data, error } = await supabaseClient.storage.from('images').upload(fileName, req.file.buffer, {
+        const { data: uploadData, error: uploadError } = await supabaseClient.storage.from('images').upload(fileName, req.file.buffer, {
             contentType: req.file.mimetype
         });
 
-        if (error) throw error;
+        if (uploadError) throw uploadError;
 
         const publicUrl = supabaseClient.storage.from('images').getPublicUrl(fileName).data.publicUrl;
 
-        // 投稿としてデータベースに保存
         const { data: postData, error: postError } = await supabaseClient
             .from('messages')
-            .insert({ sender_id: user.email, content: `![](${publicUrl})` }); // Markdown形式で画像URLを投稿
+            .insert({ sender_id: user.email, content: `![](${publicUrl})` });
 
         if (postError) throw postError;
 
@@ -89,18 +117,13 @@ app.post('/api/upload', upload.single('image'), async (req, res) => {
     }
 });
 
-
 // ------------------------------------
-// 既存のAPIエンドポイント
+// 既存のAPIエンドポイント (変更なし)
 // ------------------------------------
-
-// ルートURLにアクセスされたときにindex.htmlを返す
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
 
 // メッセージ取得用API
 app.get('/api/messages', async (req, res) => {
+    // ... 既存のコード ...
     try {
         const { data, error } = await supabaseClient
             .from('messages')
@@ -118,6 +141,7 @@ app.get('/api/messages', async (req, res) => {
 
 // 新規メッセージ投稿用API
 app.post('/api/messages', async (req, res) => {
+    // ... 既存のコード ...
     const { sender_id, content } = req.body;
     if (!sender_id || !content) {
         return res.status(400).json({ error: 'sender_id and content are required' });
@@ -129,7 +153,7 @@ app.post('/api/messages', async (req, res) => {
             .insert({ sender_id, content });
 
         if (error) {
-            return res.status(500).json({ error: error.message });
+            return res.status(500).json({ error: e.message });
         }
         res.status(201).json(data);
     } catch (e) {
@@ -139,6 +163,7 @@ app.post('/api/messages', async (req, res) => {
 
 // メッセージ全削除用API
 app.delete('/api/messages', async (req, res) => {
+    // ... 既存のコード ...
     const { password } = req.body;
 
     try {
@@ -148,7 +173,7 @@ app.delete('/api/messages', async (req, res) => {
             .eq('id', 'clear_password')
             .single();
 
-        if (passwordError || passwordData.value !== password) {
+        if (passwordError || !passwordData || passwordData.value !== password) {
             return res.status(401).json({ error: 'Invalid password' });
         }
 
