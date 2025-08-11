@@ -14,15 +14,8 @@
             margin: 0;
             padding: 20px;
         }
-
-        #app-container {
-            position: relative;
-        }
-
-        #terminal-view {
-            display: block;
-        }
-        
+        #app-container { position: relative; }
+        #terminal-view { display: block; }
         #terminal {
             width: 100%;
             height: 90vh;
@@ -31,21 +24,9 @@
             padding: 10px;
             box-sizing: border-box;
         }
-
-        .line {
-            display: flex;
-        }
-        
-        .prompt {
-            color: #8f8;
-            margin-right: 8px;
-        }
-        
-        .input-area {
-            display: flex;
-            align-items: center;
-        }
-
+        .line { display: flex; }
+        .prompt { color: #8f8; margin-right: 8px; }
+        .input-area { display: flex; align-items: center; }
         #command-line {
             background-color: transparent;
             border: none;
@@ -55,44 +36,16 @@
             outline: none;
             width: 100%;
         }
-
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-        ::-webkit-scrollbar-track {
-            background: #1a1a1a;
-        }
-        ::-webkit-scrollbar-thumb {
-            background: #555;
-        }
-        ::-webkit-scrollbar-thumb:hover {
-            background: #777;
-        }
-        .message {
-            color: #ccc;
-        }
-        .my-message {
-            color: #6495ed;
-            margin-left: 20px;
-        }
-        .other-message {
-            color: #f08080;
-        }
-        .system {
-            color: #fff;
-            font-weight: bold;
-        }
-        .timestamp {
-            font-size: 0.8em;
-            color: #777;
-            margin-left: 8px;
-        }
-        .image-post {
-            max-width: 100%;
-            height: auto;
-            border: 1px solid #555;
-            margin: 10px 0;
-        }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #1a1a1a; }
+        ::-webkit-scrollbar-thumb { background: #555; }
+        ::-webkit-scrollbar-thumb:hover { background: #777; }
+        .message { color: #ccc; }
+        .my-message { color: #6495ed; margin-left: 20px; }
+        .other-message { color: #f08080; }
+        .system { color: #fff; font-weight: bold; }
+        .timestamp { font-size: 0.8em; color: #777; margin-left: 8px; }
+        .image-post { max-width: 100%; height: auto; border: 1px solid #555; margin: 10px 0; }
     </style>
 </head>
 <body>
@@ -113,24 +66,20 @@
         </div>
     </div>
 
-    <input type="file" id="image-upload" style="display: none;">
+    <input type="file" id="image-upload" style="display: none;" accept="image/*">
 
     <script>
         const terminal = document.getElementById('terminal');
         const commandLine = document.getElementById('command-line');
         const imageUploadInput = document.getElementById('image-upload');
 
-        let myId = '';
-        let myName = '';
-        let myEmail = '';
+        let myUserName = '';
         let isConnected = true;
         let updateInterval = null;
         let lastMessageId = 0;
         let accessToken = null;
-        const allowedUploaderId = 'DE39D5'; // このIDはもう使いません
 
         function parseAndRenderMessage(content) {
-            // Markdown形式の画像URLをHTMLの<img>タグに変換
             const imgRegex = /!\[.*?\]\((https?:\/\/.*?)\)/g;
             if (imgRegex.test(content)) {
                 return content.replace(imgRegex, '<img src="$1" class="image-post" alt="Posted Image">');
@@ -139,7 +88,7 @@
         }
         
         function displayMessage(sender, content, timestamp = null) {
-            const isMyMessage = sender === myEmail;
+            const isMyMessage = sender === myUserName;
             const displayName = sender;
             const className = isMyMessage ? 'my-message' : 'other-message';
             
@@ -149,7 +98,6 @@
                 const formattedTime = formatTimestamp(timestamp);
                 messageHtml += `<span class="timestamp">${formattedTime}</span>`;
             }
-
             print(messageHtml, className);
         }
         
@@ -166,7 +114,7 @@
             try {
                 const data = await fetchMessages();
                 if (data.length > 0) {
-                    terminal.innerHTML = ""; // 画面をクリア
+                    terminal.innerHTML = "";
                     data.forEach(msg => {
                         displayMessage(msg.sender_id, msg.content, msg.created_at);
                     });
@@ -244,89 +192,34 @@
         }
 
         function deleteCookie(name) {
-            document.cookie = name + '=; Max-Age=-99999999;';
+            document.cookie = name + '=; Max-Age=-99999999; path=/';
         }
 
         function clearSession() {
             deleteCookie('sessionToken');
-            deleteCookie('userEmail');
-            myEmail = '';
+            deleteCookie('userName');
+            myUserName = '';
             accessToken = null;
         }
 
-        async function handleAuth() {
-            let email, password;
-            const action = prompt("ログインしますか？ サインアップしますか？ (login/signup)");
-
-            if (action === 'signup') {
-                email = prompt("メールアドレスを入力してください:");
-                password = prompt("パスワードを入力してください:");
-                if (email && password) {
-                    try {
-                        const response = await fetch('/api/auth/signup', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ email, password })
-                        });
-                        const result = await response.json();
-                        if (response.ok) {
-                            print("サインアップが完了しました。メールアドレスを確認してください。", 'system');
-                        } else {
-                            print(`サインアップ失敗: ${result.error}`, 'system');
-                        }
-                    } catch (e) {
-                        print(`エラーが発生しました: ${e.message}`, 'system');
-                    }
-                }
-            } else if (action === 'login') {
-                email = prompt("メールアドレスを入力してください:");
-                password = prompt("パスワードを入力してください:");
-                if (email && password) {
-                    try {
-                        const response = await fetch('/api/auth/login', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ email, password })
-                        });
-                        const result = await response.json();
-                        if (response.ok) {
-                            print("ログインに成功しました。", 'system');
-                            myEmail = result.user.email;
-                            accessToken = result.session.access_token;
-                            setCookie('sessionToken', accessToken, 1);
-                            setCookie('userEmail', myEmail, 1);
-                            
-                        } else {
-                            print(`ログイン失敗: ${result.error}`, 'system');
-                        }
-                    } catch (e) {
-                        print(`エラーが発生しました: ${e.message}`, 'system');
-                    }
-                }
-            } else {
-                print("認証アクションがキャンセルされました。ログインしないと投稿できません。", 'system');
-            }
-        }
-        
         async function handleCommand(command) {
             const parts = command.split(' ');
             const mainCommand = parts[0].toLowerCase();
-            const args = parts.slice(1);
             const fullCommand = command;
 
-            if (mainCommand !== '/login' && mainCommand !== '/signup' && !accessToken) {
+            // 投稿コマンドとログイン関連以外のコマンドは、ログイン状態をチェック
+            if (mainCommand !== 'help' && mainCommand !== '/login' && mainCommand !== '/signup' && !accessToken) {
                 print("投稿するにはまずログインしてください。'/login'または'/signup'で認証できます。", 'system');
                 return;
             }
 
+            // ログイン済みで、投稿コマンドではない場合
             if (isConnected && accessToken && fullCommand && !mainCommand.startsWith('/')) {
                 try {
                     const response = await fetch('/api/messages', {
                         method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify({ sender_id: myEmail, content: fullCommand })
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ sender_id: myUserName, content: fullCommand })
                     });
                     if (!response.ok) {
                         throw new Error('Failed to post message');
@@ -342,8 +235,8 @@
                 case 'help':
                     print("利用可能なコマンド:");
                     print("&nbsp;&nbsp;<b>/disconnect</b> - 掲示板から切断し、更新を停止します。");
-                    print("&nbsp;&nbsp;<b>/login</b>      - メールアドレスとパスワードでログインします。");
-                    print("&nbsp;&nbsp;<b>/signup</b>     - 新しいアカウントを登録します。");
+                    print("&nbsp;&nbsp;<b>/login</b>      - ログインページに移動します。");
+                    print("&nbsp;&nbsp;<b>/signup</b>     - サインアップページに移動します。");
                     print("&nbsp;&nbsp;<b>/logout</b>     - 現在のセッションからログアウトします。");
                     print("&nbsp;&nbsp;<b>/upload_image</b> - ファイルをアップロードします。");
                     print("&nbsp;&nbsp;<b>/clear</b>      - データベースのメッセージをすべて削除します。 (パスワードが必要です)");
@@ -352,12 +245,13 @@
                 
                 case '/login':
                 case '/signup':
-                    await handleAuth();
+                    window.location.href = '/login.html';
                     break;
 
                 case '/logout':
                     clearSession();
                     print("ログアウトしました。", 'system');
+                    window.location.href = '/login.html';
                     break;
                 
                 case '/disconnect':
@@ -384,10 +278,8 @@
                             if (!response.ok) {
                                 throw new Error(result.error);
                             }
-                            
                             terminal.innerHTML = "<div>ようこそ！</div><div>掲示板に接続し、10秒ごとに自動更新を開始しました。</div><div>'help'でコマンドを確認できます。</div><br>";
                             print("データベースのメッセージをすべて削除しました。", 'system');
-                            
                             if (isConnected) {
                                 fetchAllMessages();
                             }
@@ -416,6 +308,10 @@
             if (!file) {
                 return;
             }
+            if (!accessToken) {
+                print("画像をアップロードするにはログインが必要です。", 'system');
+                return;
+            }
 
             const formData = new FormData();
             formData.append('image', file);
@@ -424,9 +320,7 @@
                 print("画像をアップロード中...", 'system');
                 const response = await fetch('/api/upload', {
                     method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${accessToken}`
-                    },
+                    headers: { 'Authorization': `Bearer ${accessToken}` },
                     body: formData
                 });
 
@@ -445,12 +339,21 @@
         document.body.addEventListener('click', function() {
             commandLine.focus();
         });
+        
+        commandLine.addEventListener('keypress', function(event) {
+            if (event.key === 'Enter') {
+                const command = commandLine.value.trim();
+                print(`<span class="prompt">$</span> ${command}`);
+                handleCommand(command);
+                commandLine.value = '';
+            }
+        });
 
         function init() {
             accessToken = getCookie('sessionToken');
-            myEmail = getCookie('userEmail');
-            if (accessToken && myEmail) {
-                print(`ログイン済みです: ${myEmail}`, 'system');
+            myUserName = getCookie('userName');
+            if (accessToken && myUserName) {
+                print(`ログイン済みです: ${myUserName}`, 'system');
             } else {
                 print("ログインしていません。'/login'または'/signup'で認証してください。", 'system');
             }
