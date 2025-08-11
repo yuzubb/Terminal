@@ -87,6 +87,12 @@
             color: #777;
             margin-left: 8px;
         }
+        .image-post {
+            max-width: 100%;
+            height: auto;
+            border: 1px solid #555;
+            margin: 10px 0;
+        }
     </style>
 </head>
 <body>
@@ -107,18 +113,46 @@
         </div>
     </div>
 
+    <input type="file" id="image-upload" style="display: none;">
+
     <script>
         const terminal = document.getElementById('terminal');
         const commandLine = document.getElementById('command-line');
+        const imageUploadInput = document.getElementById('image-upload');
 
         let myId = '';
         let myName = '';
+        let myEmail = '';
         let isConnected = true;
         let updateInterval = null;
         let lastMessageId = 0;
-        const allowedUploaderId = 'DE39D5';
+        let accessToken = null;
+        const allowedUploaderId = 'DE39D5'; // このIDはもう使いません
 
-        // メッセージをサーバーから取得
+        function parseAndRenderMessage(content) {
+            // Markdown形式の画像URLをHTMLの<img>タグに変換
+            const imgRegex = /!\[.*?\]\((https?:\/\/.*?)\)/g;
+            if (imgRegex.test(content)) {
+                return content.replace(imgRegex, '<img src="$1" class="image-post" alt="Posted Image">');
+            }
+            return content;
+        }
+        
+        function displayMessage(sender, content, timestamp = null) {
+            const isMyMessage = sender === myEmail;
+            const displayName = sender;
+            const className = isMyMessage ? 'my-message' : 'other-message';
+            
+            const renderedContent = parseAndRenderMessage(content);
+            let messageHtml = `[${displayName}] ${renderedContent}`;
+            if (timestamp) {
+                const formattedTime = formatTimestamp(timestamp);
+                messageHtml += `<span class="timestamp">${formattedTime}</span>`;
+            }
+
+            print(messageHtml, className);
+        }
+        
         async function fetchMessages(lastId) {
             const url = lastId ? `/api/messages?lastId=${lastId}` : `/api/messages`;
             const response = await fetch(url);
@@ -179,21 +213,7 @@
             const seconds = String(date.getSeconds()).padStart(2, '0');
             return `${hours}:${minutes}:${seconds}`;
         }
-        
-        function displayMessage(sender, content, timestamp = null) {
-            const isMyMessage = sender === myName || sender === myId;
-            const displayName = sender;
-            const className = isMyMessage ? 'my-message' : 'other-message';
-            
-            let messageHtml = `[${displayName}] ${content}`;
-            if (timestamp) {
-                const formattedTime = formatTimestamp(timestamp);
-                messageHtml += `<span class="timestamp">${formattedTime}</span>`;
-            }
 
-            print(messageHtml, className);
-        }
-        
         function print(message, className = 'message') {
             const newLine = document.createElement('div');
             newLine.className = className;
@@ -202,90 +222,115 @@
             terminal.scrollTop = terminal.scrollHeight;
         }
 
-        function getCookie(name) {
-            const nameEQ = name + "=";
-            const ca = document.cookie.split(';');
-            for(let i=0; i < ca.length; i++) {
-                let c = ca[i];
-                while (c.charAt(0)==' ') c = c.substring(1,c.length);
-                if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length,c.length);
-            }
-            return null;
-        }
-
         function setCookie(name, value, days) {
             let expires = "";
             if (days) {
                 const date = new Date();
-                date.setTime(date.getTime() + (days*24*60*60*1000));
+                date.setTime(date.getTime() + (days * 24 * 60 * 60 * 1000));
                 expires = "; expires=" + date.toUTCString();
             }
-            document.cookie = name + "=" + (value || "")  + expires + "; path=/";
-        }
-
-        function generateRandomId() {
-            const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
-            let result = '';
-            for (let i = 0; i < 6; i++) {
-                result += chars.charAt(Math.floor(Math.random() * chars.length));
-            }
-            return result;
+            document.cookie = name + "=" + (value || "") + expires + "; path=/";
         }
         
-        function loadUserInfo() {
-            const idCookie = getCookie('myTerminalId');
-            const nameCookie = getCookie('myTerminalName');
-            
-            if (idCookie) {
-                myId = idCookie;
-                print(`あなたのID: ${myId}`);
-            } else {
-                myId = generateRandomId();
-                setCookie('myTerminalId', myId, 365);
-                print(`新しいIDが生成されました: ${myId}`, 'system');
+        function getCookie(name) {
+            const nameEQ = name + "=";
+            const ca = document.cookie.split(';');
+            for (let i = 0; i < ca.length; i++) {
+                let c = ca[i];
+                while (c.charAt(0) == ' ') c = c.substring(1, c.length);
+                if (c.indexOf(nameEQ) == 0) return c.substring(nameEQ.length, c.length);
             }
-
-            if (nameCookie) {
-                myName = nameCookie;
-                print(`あなたの名前: ${myName}`);
-            } else {
-                myName = '';
-            }
+            return null;
         }
 
-        commandLine.addEventListener('keydown', async function(event) {
-            if (event.key === 'Enter') {
-                const command = commandLine.value.trim();
-                
-                const displayNameForPrompt = myName || myId || 'Anonymous';
-                print(`<div class="line"><span class="prompt">$ ${displayNameForPrompt}: </span><div>${command}</div></div>`);
+        function deleteCookie(name) {
+            document.cookie = name + '=; Max-Age=-99999999;';
+        }
 
-                await handleCommand(command);
+        function clearSession() {
+            deleteCookie('sessionToken');
+            deleteCookie('userEmail');
+            myEmail = '';
+            accessToken = null;
+        }
 
-                commandLine.value = '';
+        async function handleAuth() {
+            let email, password;
+            const action = prompt("ログインしますか？ サインアップしますか？ (login/signup)");
+
+            if (action === 'signup') {
+                email = prompt("メールアドレスを入力してください:");
+                password = prompt("パスワードを入力してください:");
+                if (email && password) {
+                    try {
+                        const response = await fetch('/api/auth/signup', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email, password })
+                        });
+                        const result = await response.json();
+                        if (response.ok) {
+                            print("サインアップが完了しました。メールアドレスを確認してください。", 'system');
+                        } else {
+                            print(`サインアップ失敗: ${result.error}`, 'system');
+                        }
+                    } catch (e) {
+                        print(`エラーが発生しました: ${e.message}`, 'system');
+                    }
+                }
+            } else if (action === 'login') {
+                email = prompt("メールアドレスを入力してください:");
+                password = prompt("パスワードを入力してください:");
+                if (email && password) {
+                    try {
+                        const response = await fetch('/api/auth/login', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ email, password })
+                        });
+                        const result = await response.json();
+                        if (response.ok) {
+                            print("ログインに成功しました。", 'system');
+                            myEmail = result.user.email;
+                            accessToken = result.session.access_token;
+                            setCookie('sessionToken', accessToken, 1);
+                            setCookie('userEmail', myEmail, 1);
+                            
+                        } else {
+                            print(`ログイン失敗: ${result.error}`, 'system');
+                        }
+                    } catch (e) {
+                        print(`エラーが発生しました: ${e.message}`, 'system');
+                    }
+                }
+            } else {
+                print("認証アクションがキャンセルされました。ログインしないと投稿できません。", 'system');
             }
-        });
-
+        }
+        
         async function handleCommand(command) {
             const parts = command.split(' ');
             const mainCommand = parts[0].toLowerCase();
             const args = parts.slice(1);
             const fullCommand = command;
 
-            if (isConnected && myId && fullCommand && !mainCommand.startsWith('/') && mainCommand !== 'help') {
-                const sender = myName || myId;
+            if (mainCommand !== '/login' && mainCommand !== '/signup' && !accessToken) {
+                print("投稿するにはまずログインしてください。'/login'または'/signup'で認証できます。", 'system');
+                return;
+            }
+
+            if (isConnected && accessToken && fullCommand && !mainCommand.startsWith('/')) {
                 try {
                     const response = await fetch('/api/messages', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
                         },
-                        body: JSON.stringify({ sender_id: sender, content: fullCommand })
+                        body: JSON.stringify({ sender_id: myEmail, content: fullCommand })
                     });
                     if (!response.ok) {
                         throw new Error('Failed to post message');
                     }
-                    // 投稿成功後、手動でメッセージを更新
                     fetchNewMessages();
                 } catch (error) {
                     print(`投稿に失敗しました: ${error.message}`, 'system');
@@ -297,39 +342,27 @@
                 case 'help':
                     print("利用可能なコマンド:");
                     print("&nbsp;&nbsp;<b>/disconnect</b> - 掲示板から切断し、更新を停止します。");
-                    print("&nbsp;&nbsp;<b>/id</b>         - あなたのIDと名前を表示します。");
-                    print("&nbsp;&nbsp;<b>/name</b> [新しい名前] - 自分の名前を変更します。");
+                    print("&nbsp;&nbsp;<b>/login</b>      - メールアドレスとパスワードでログインします。");
+                    print("&nbsp;&nbsp;<b>/signup</b>     - 新しいアカウントを登録します。");
+                    print("&nbsp;&nbsp;<b>/logout</b>     - 現在のセッションからログアウトします。");
+                    print("&nbsp;&nbsp;<b>/upload_image</b> - ファイルをアップロードします。");
                     print("&nbsp;&nbsp;<b>/clear</b>      - データベースのメッセージをすべて削除します。 (パスワードが必要です)");
-                    print("&nbsp;&nbsp;<b>/upload</b>     - ファイルをアップロードします。 (ID:DE39D5のみ)");
                     print("&nbsp;&nbsp;<b>[メッセージ]</b> - 全員にメッセージを投稿します。");
                     break;
                 
-                case '/id':
-                    if (myId) {
-                        print(`あなたのID: ${myId}`, 'system');
-                        if (myName) {
-                            print(`現在の名前: ${myName}`, 'system');
-                        } else {
-                            print("名前はまだ設定されていません。", 'system');
-                        }
-                    }
-                    break;
-                
-                case '/name':
-                    if (args.length > 0) {
-                        const newName = args.join(' ');
-                        myName = newName;
-                        setCookie('myTerminalName', myName, 365);
-                        print(`名前が'${myName}'に変更されました。`, 'system');
-                    } else {
-                        print("使用方法: /name [新しい名前]", 'system');
-                    }
+                case '/login':
+                case '/signup':
+                    await handleAuth();
                     break;
 
+                case '/logout':
+                    clearSession();
+                    print("ログアウトしました。", 'system');
+                    break;
+                
                 case '/disconnect':
                     if (isConnected) {
                         isConnected = false;
-                        setCookie('isConnected', 'false', 365);
                         print("掲示板から切断しました。", 'system');
                         stopUpdating();
                     } else {
@@ -343,9 +376,7 @@
                         try {
                             const response = await fetch('/api/messages', {
                                 method: 'DELETE',
-                                headers: {
-                                    'Content-Type': 'application/json'
-                                },
+                                headers: { 'Content-Type': 'application/json' },
                                 body: JSON.stringify({ password })
                             });
 
@@ -368,12 +399,8 @@
                     }
                     break;
 
-                case '/upload':
-                    if (myId !== allowedUploaderId) {
-                        print("このコマンドを実行する権限がありません。", 'system');
-                        return;
-                    }
-                    print("ファイルアップロード機能は現在開発中です。", 'system');
+                case '/upload_image':
+                    imageUploadInput.click();
                     break;
 
                 default:
@@ -384,13 +411,54 @@
             }
         }
         
+        imageUploadInput.addEventListener('change', async (event) => {
+            const file = event.target.files[0];
+            if (!file) {
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('image', file);
+
+            try {
+                print("画像をアップロード中...", 'system');
+                const response = await fetch('/api/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Authorization': `Bearer ${accessToken}`
+                    },
+                    body: formData
+                });
+
+                const result = await response.json();
+                if (!response.ok) {
+                    throw new Error(result.error);
+                }
+
+                print("画像が正常にアップロードされました。", 'system');
+                fetchNewMessages();
+            } catch (e) {
+                print(`画像のアップロードに失敗しました: ${e.message}`, 'system');
+            }
+        });
+
         document.body.addEventListener('click', function() {
             commandLine.focus();
         });
 
-        loadUserInfo();
-        fetchAllMessages();
-        startUpdating();
+        function init() {
+            accessToken = getCookie('sessionToken');
+            myEmail = getCookie('userEmail');
+            if (accessToken && myEmail) {
+                print(`ログイン済みです: ${myEmail}`, 'system');
+            } else {
+                print("ログインしていません。'/login'または'/signup'で認証してください。", 'system');
+            }
+            fetchAllMessages();
+            startUpdating();
+        }
+
+        init();
     </script>
 </body>
 </html>
