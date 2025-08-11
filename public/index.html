@@ -207,13 +207,11 @@
             const mainCommand = parts[0].toLowerCase();
             const fullCommand = command;
 
-            // 投稿コマンドとログイン関連以外のコマンドは、ログイン状態をチェック
             if (mainCommand !== 'help' && mainCommand !== '/login' && mainCommand !== '/signup' && !accessToken) {
                 print("投稿するにはまずログインしてください。'/login'または'/signup'で認証できます。", 'system');
                 return;
             }
 
-            // ログイン済みで、投稿コマンドではない場合
             if (isConnected && accessToken && fullCommand && !mainCommand.startsWith('/')) {
                 try {
                     const response = await fetch('/api/messages', {
