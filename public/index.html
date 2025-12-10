@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Web Terminal Experiment</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div id="terminal-container">
+        <div id="terminal-header">
+            <span>user@experiment-box:~</span>
+            <button id="reset-button">RESET</button>
+        </div>
+        <div id="terminal-output">
+            <pre>Welcome to the isolated Web Terminal!
+Type 'ls' or 'apt update && apt install fastfetch -y' to test.
+</pre>
+        </div>
+        <div id="terminal-input-line">
+            <span id="prompt">user@experiment-box:$</span>
+            <input type="text" id="command-input" autofocus>
+        </div>
+    </div>
+
+    <script>
+        const outputElement = document.getElementById('terminal-output');
+        const inputElement = document.getElementById('command-input');
+        const resetButton = document.getElementById('reset-button');
+        const PROMPT_TEXT = 'user@experiment-box:$';
+        
+        // セッションIDを簡易的に生成・保持
+        let sessionId = localStorage.getItem('terminalSessionId') || 
+                        'sess-' + Math.random().toString(36).substring(2, 9);
+        localStorage.setItem('terminalSessionId', sessionId);
+
+        // 出力表示ヘルパー関数
+        function printOutput(text, isError = false) {
+            const pre = document.createElement('pre');
+            pre.textContent = text;
+            if (isError) {
+                pre.classList.add('error-output');
+            }
+            outputElement.appendChild(pre);
+            outputElement.scrollTop = outputElement.scrollHeight; // 自動スクロール
+        }
+
+        // コマンド実行関数
+        async function executeCommand(command) {
+            if (!command.trim()) return;
+
+            // 履歴として入力コマンドを表示
+            printOutput(`${PROMPT_TEXT} ${command}`);
+            inputElement.value = ''; // 入力フィールドをクリア
+
+            try {
+                const response = await fetch('/api/run', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId, command }),
+                });
+
+                const result = await response.json();
+                
+                // 標準出力の表示
+                if (result.output) {
+                    printOutput(result.output);
+                }
+
+                // エラー出力の表示
+                if (result.error) {
+                    printOutput(result.error, true);
+                }
+                
+                // 終了コードの表示
+                if (result.exitCode !== 0) {
+                     printOutput(`[Exit Code: ${result.exitCode}]`, true);
+                }
+
+            } catch (error) {
+                printOutput(`Network Error: Could not connect to server. (${error.message})`, true);
+            }
+        }
+
+        // リセット機能
+        resetButton.addEventListener('click', async () => {
+            if (!confirm('本当に環境をリセットしますか？現在のコンテナは破棄されます。')) return;
+
+            outputElement.innerHTML = ''; // フロントエンドをクリア
+            printOutput('Resetting terminal environment...');
+
+            try {
+                const response = await fetch('/api/reset', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sessionId }),
+                });
+                
+                const result = await response.json();
+                
+                if (response.ok) {
+                    printOutput(result.output);
+                } else {
+                    printOutput(`Reset Failed: ${result.output}`, true);
+                }
+            } catch (error) {
+                printOutput(`Network Error during reset: ${error.message}`, true);
+            }
+        });
+
+        // Enterキーでコマンド実行
+        inputElement.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                executeCommand(inputElement.value);
+            }
+        });
+        
+        // ページロード時にフォーカスを設定
+        inputElement.focus();
+    </script>
+</body>
+</html>
