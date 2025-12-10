@@ -1,0 +1,78 @@
+/* public/style.css */
+body {
+    background-color: #1e1e1e; /* 濃い灰色 */
+    color: #00ff41; /* 明るい緑 */
+    font-family: 'Consolas', 'Courier New', monospace;
+    margin: 0;
+    padding: 20px;
+    display: flex;
+    justify-content: center;
+}
+
+#terminal-container {
+    width: 90%;
+    max-width: 1000px;
+    border: 1px solid #00ff41;
+    box-shadow: 0 0 10px rgba(0, 255, 65, 0.5);
+    background-color: #000000;
+    padding: 5px;
+}
+
+#terminal-header {
+    background-color: #333;
+    color: #fff;
+    padding: 5px 10px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 0.9em;
+}
+
+#reset-button {
+    background-color: #a00;
+    color: white;
+    border: none;
+    padding: 5px 10px;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+#terminal-output {
+    height: 60vh;
+    overflow-y: auto;
+    padding: 10px;
+    white-space: pre-wrap; /* 改行を保持 */
+    word-wrap: break-word; /* 長い単語の折り返し */
+}
+
+#terminal-output pre {
+    margin: 0;
+    padding: 0;
+    color: inherit;
+}
+
+.error-output {
+    color: #ff004c; /* エラーは赤で強調 */
+}
+
+#terminal-input-line {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+}
+
+#prompt {
+    margin-right: 5px;
+    flex-shrink: 0; /* プロンプトが縮まないように */
+}
+
+#command-input {
+    flex-grow: 1; /* 入力欄が残りの幅を占める */
+    background-color: transparent;
+    color: inherit;
+    border: none;
+    outline: none;
+    font-family: inherit;
+    font-size: inherit;
+    caret-color: #00ff41; /* カーソルの色 */
+}
